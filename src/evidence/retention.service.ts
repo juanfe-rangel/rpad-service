@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
-import { EvidenceStatus, ReportStatus } from '@prisma/client';
+import { EvidenceStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { BlobStorageService } from './blob-storage.service';
 
@@ -15,7 +15,7 @@ export class RetentionService {
     if (this.running) return;
     this.running = true;
     try {
-      const pending = await this.prisma.reportEvidence.findMany({ where: { status: EvidenceStatus.DELETE_PENDING, report: { is: { status: ReportStatus.ARCHIVED } } }, take: 25, orderBy: { createdAt: 'asc' } });
+      const pending = await this.prisma.reportEvidence.findMany({ where: { status: EvidenceStatus.DELETE_PENDING }, take: 25, orderBy: { createdAt: 'asc' } });
       for (const item of pending) {
         try {
           await this.storage.delete(item.storageKey);

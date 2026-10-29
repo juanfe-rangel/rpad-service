@@ -56,6 +56,8 @@ export class EvidenceService {
     await this.reports.assertAccess(reportId, actor, false);
     const row = await this.prisma.reportEvidence.findFirst({ where: { id: evidenceId, reportId, status: EvidenceStatus.AVAILABLE } });
     if (!row) throw new NotFoundException('Evidence not found');
-    return { evidenceId, ...(await this.storage.createReadUrl(row.storageKey)) };
+    const url = await this.storage.createReadUrl(row.storageKey);
+    await this.prisma.auditEvent.create({ data: { reportId, actorId: actor.userId, action: 'EVIDENCE_READ_URL_ISSUED', metadata: { evidenceId } } });
+    return { evidenceId, ...url };
   }
 }

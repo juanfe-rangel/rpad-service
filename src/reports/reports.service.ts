@@ -46,7 +46,7 @@ export class ReportsService {
   }
 
   async findReport(id: string) {
-    const report = await this.prisma.report.findUnique({ where: { id }, include: { decision: true, evidence: { select: { id: true, originalFilename: true, mimeType: true, sizeBytes: true, sha256: true, status: true, createdAt: true } } } });
+    const report = await this.prisma.report.findUnique({ where: { id }, include: { decision: true, actions: true, evidence: { select: { id: true, originalFilename: true, mimeType: true, sizeBytes: true, sha256: true, status: true, createdAt: true } } } });
     if (!report) throw new NotFoundException('Report not found');
     return report;
   }
