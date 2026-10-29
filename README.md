@@ -37,7 +37,10 @@ La aplicación escucha en el puerto 3000 y expone OpenAPI en /docs. Los endpoint
 - POST /internal/rpad/reports/:id/evidence/upload-intents — solicita URL SAS temporal para imagen o video.
 - POST /internal/rpad/reports/:id/evidence/:evidenceId/complete — verifica la carga, MIME, tamaño y firma básica; calcula hash.
 - GET /internal/rpad/reports/:id/evidence/:evidenceId/url — URL SAS de lectura temporal.
-- POST /internal/rpad/reports/:id/decisions — decisión y acciones propuestas; rol AUDITOR.
+- POST /internal/rpad/reports/:id/start-review — pasa un caso OPEN a UNDER_REVIEW; rol AUDITOR.
+- POST /internal/rpad/reports/:id/decisions — registra decisión y crea acciones; rol AUDITOR.
+- POST /internal/rpad/reports/:id/actions/:actionId/result — registra resultado SUCCEEDED/FAILED devuelto por el servicio responsable; rol SERVICE.
+- El archivo se bloquea hasta que todas las sanciones/reparaciones tengan resultado SUCCEEDED.
 - POST /internal/rpad/reports/:id/archive — archiva el caso y agenda purga; rol AUDITOR.
 - POST /internal/rpad/reports/:id/chat-purge-confirmation — confirma la eliminación del chat de origen; rol SERVICE.
 - GET /internal/rpad/reports/:id/history — bitácora de auditoría.

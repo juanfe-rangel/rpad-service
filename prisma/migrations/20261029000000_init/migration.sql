@@ -2,6 +2,8 @@ CREATE TYPE "ReportStatus" AS ENUM ('PENDING_CONTEXT', 'OPEN', 'UNDER_REVIEW', '
 CREATE TYPE "EvidenceStatus" AS ENUM ('PENDING_UPLOAD', 'AVAILABLE', 'DELETE_PENDING', 'DELETED');
 CREATE TYPE "DecisionOutcome" AS ENUM ('CLAIMANT_FAVORED', 'PROVIDER_FAVORED', 'NO_FAULT');
 CREATE TYPE "OutboxStatus" AS ENUM ('PENDING', 'DISPATCHED');
+CREATE TYPE "ActionType" AS ENUM ('SANCTION', 'RESTORATION');
+CREATE TYPE "ActionStatus" AS ENUM ('PENDING', 'SUCCEEDED', 'FAILED');
 
 CREATE TABLE "Report" (
   "id" UUID NOT NULL,
@@ -33,6 +35,18 @@ CREATE TABLE "ReportDecision" (
   "actions" JSONB NOT NULL,
   "decidedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "ReportDecision_pkey" PRIMARY KEY ("reportId")
+);
+CREATE TABLE "DecisionAction" (
+  "id" UUID NOT NULL,
+  "reportId" UUID NOT NULL,
+  "type" "ActionType" NOT NULL,
+  "targetId" TEXT NOT NULL,
+  "description" TEXT NOT NULL,
+  "status" "ActionStatus" NOT NULL DEFAULT 'PENDING',
+  "resultNote" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "DecisionAction_pkey" PRIMARY KEY ("id")
 );
 CREATE TABLE "ReportEvidence" (
   "id" UUID NOT NULL,
@@ -74,12 +88,14 @@ CREATE INDEX "Report_claimantId_createdAt_idx" ON "Report"("claimantId", "create
 CREATE INDEX "Report_providerId_createdAt_idx" ON "Report"("providerId", "createdAt");
 CREATE INDEX "Report_chatId_idx" ON "Report"("chatId");
 CREATE INDEX "Report_status_createdAt_idx" ON "Report"("status", "createdAt");
+CREATE INDEX "DecisionAction_reportId_status_idx" ON "DecisionAction"("reportId", "status");
 CREATE INDEX "ReportEvidence_reportId_status_idx" ON "ReportEvidence"("reportId", "status");
 CREATE INDEX "AuditEvent_reportId_createdAt_idx" ON "AuditEvent"("reportId", "createdAt");
 CREATE INDEX "OutboxEvent_status_createdAt_idx" ON "OutboxEvent"("status", "createdAt");
 
-ALTER TABLE "ChatSnapshot" ADD CONSTRAINT "ChatSnapshot_reportId_fkey" FOREIGN KEY ("reportId") REFERENCES "Report"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "ReportDecision" ADD CONSTRAINT "ReportDecision_reportId_fkey" FOREIGN KEY ("reportId") REFERENCES "Report"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ChatSnapshot" ADD CONSTRAINT "ChatSnapshot_reportId_fkey" FOREIGN KEY ("reportId") REFERENCES "Report"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "ReportDecision" ADD CONSTRAINT "ReportDecision_reportId_fkey" FOREIGN KEY ("reportId") REFERENCES "Report"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "DecisionAction" ADD CONSTRAINT "DecisionAction_reportId_fkey" FOREIGN KEY ("reportId") REFERENCES "Report"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "ReportEvidence" ADD CONSTRAINT "ReportEvidence_reportId_fkey" FOREIGN KEY ("reportId") REFERENCES "Report"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "AuditEvent" ADD CONSTRAINT "AuditEvent_reportId_fkey" FOREIGN KEY ("reportId") REFERENCES "Report"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "OutboxEvent" ADD CONSTRAINT "OutboxEvent_aggregateId_fkey" FOREIGN KEY ("aggregateId") REFERENCES "Report"("id") ON DELETE CASCADE ON UPDATE CASCADE;

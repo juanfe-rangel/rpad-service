@@ -33,6 +33,17 @@ enum OutboxStatus {
   DISPATCHED
 }
 
+enum ActionType {
+  SANCTION
+  RESTORATION
+}
+
+enum ActionStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
 model Report {
   id                 String          @id @default(uuid()) @db.Uuid
   claimantId         String
@@ -46,6 +57,7 @@ model Report {
   sourceChatPurgedAt DateTime?
   chatSnapshot       ChatSnapshot?
   decision           ReportDecision?
+  actions             DecisionAction[]
   evidence           ReportEvidence[]
   auditEvents        AuditEvent[]
   outboxEvents       OutboxEvent[]
@@ -63,7 +75,7 @@ model ChatSnapshot {
   messages        Json
   contentSha256   String
   capturedAt      DateTime @default(now())
-  report          Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  report          Report   @relation(fields: [reportId], references: [id], onDelete: Restrict)
 }
 
 model ReportDecision {
@@ -74,6 +86,21 @@ model ReportDecision {
   actions       Json
   decidedAt     DateTime        @default(now())
   report        Report          @relation(fields: [reportId], references: [id], onDelete: Cascade)
+}
+
+model DecisionAction {
+  id          String       @id @default(uuid()) @db.Uuid
+  reportId    String       @db.Uuid
+  type        ActionType
+  targetId    String
+  description String       @db.Text
+  status      ActionStatus @default(PENDING)
+  resultNote  String?      @db.Text
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  report      Report       @relation(fields: [reportId], references: [id], onDelete: Restrict)
+
+  @@index([reportId, status])
 }
 
 model ReportEvidence {

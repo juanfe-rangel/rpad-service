@@ -3,7 +3,7 @@ import { Prisma, ReportStatus } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { Actor } from '../auth/auth.decorators';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateDecisionDto, CreateReportDto, ChatSnapshotDto } from '../dto/report.dto';
+import { ActionResultDto, CreateDecisionDto, CreateReportDto, ChatSnapshotDto } from '../dto/report.dto';
 
 @Injectable()
 export class ReportsService {
@@ -40,7 +40,7 @@ export class ReportsService {
       : { OR: [{ claimantId: actor.userId }, { providerId: actor.userId }], ...(status ? { status } : {}) };
     const [total, items] = await this.prisma.$transaction([
       this.prisma.report.count({ where }),
-      this.prisma.report.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (safePage - 1) * safeSize, take: safeSize, include: { decision: true, evidence: { select: { id: true, originalFilename: true, mimeType: true, sizeBytes: true, sha256: true, status: true, createdAt: true } } } }),
+      this.prisma.report.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (safePage - 1) * safeSize, take: safeSize, include: { decision: true, actions: true, evidence: { select: { id: true, originalFilename: true, mimeType: true, sizeBytes: true, sha256: true, status: true, createdAt: true } } } }),
     ]);
     return { page: safePage, pageSize: safeSize, total, items };
   }
@@ -87,13 +87,44 @@ export class ReportsService {
       const report = await tx.report.findUnique({ where: { id }, include: { chatSnapshot: true } });
       if (!report) throw new NotFoundException('Report not found');
       if (![ReportStatus.OPEN, ReportStatus.UNDER_REVIEW].includes(report.status)) throw new ConflictException('Report is not ready for a decision');
+      if (dto.outcome === 'NO_FAULT' && dto.actions.length > 0) throw new BadRequestException('NO_FAULT decisions cannot include sanctions or restorations');
+      if (dto.actions.some((action) => action.type === 'SANCTION' && action.targetId !== report.claimantId && action.targetId !== report.providerId)) throw new BadRequestException('A sanction must target one of the report parties');
       if (!report.chatSnapshot) throw new ConflictException('Chat context must be captured before decision');
       const actions = dto.actions as unknown as Prisma.InputJsonValue;
       const decision = await tx.reportDecision.create({ data: { reportId: id, outcome: dto.outcome, justification: dto.justification, auditorId: actor.userId, actions } });
+      const savedActions = [];
+      for (const action of dto.actions) savedActions.push(await tx.decisionAction.create({ data: { reportId: id, type: action.type, targetId: action.targetId, description: action.description } }));
       await tx.report.update({ where: { id }, data: { status: ReportStatus.RESOLVED } });
       await tx.auditEvent.create({ data: { reportId: id, actorId: actor.userId, action: 'DECISION_RECORDED', metadata: { outcome: dto.outcome, actionCount: dto.actions.length } } });
-      await tx.outboxEvent.create({ data: { aggregateId: id, type: 'rpad.decision.recorded', payload: { reportId: id, outcome: dto.outcome, justification: dto.justification, auditorId: actor.userId, actions: dto.actions } as unknown as Prisma.InputJsonValue } });
-      return decision;
+      await tx.outboxEvent.create({ data: { aggregateId: id, type: 'rpad.decision.recorded', payload: { reportId: id, outcome: dto.outcome, justification: dto.justification, auditorId: actor.userId, actions: savedActions } as unknown as Prisma.InputJsonValue } });
+      return { decision, actions: savedActions, status: ReportStatus.RESOLVED };
+    });
+  }
+
+  async recordActionResult(id: string, actionId: string, dto: ActionResultDto, actor: Actor) {
+    if (!this.isService(actor)) throw new ForbiddenException();
+    const action = await this.prisma.decisionAction.findFirst({ where: { id: actionId, reportId: id } });
+    if (!action) throw new NotFoundException('Decision action not found');
+    if (action.status === 'SUCCEEDED' && dto.status !== 'SUCCEEDED') throw new ConflictException('A successful action cannot be downgraded');
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.decisionAction.update({ where: { id: actionId }, data: { status: dto.status, resultNote: dto.resultNote || null } });
+      await tx.auditEvent.create({ data: { reportId: id, actorId: actor.userId, action: 'DECISION_ACTION_RESULT_RECORDED', metadata: { actionId, type: action.type, status: dto.status, resultNote: dto.resultNote || null } } });
+      return result;
+    });
+    return updated;
+  }
+
+  async startReview(id: string, actor: Actor) {
+    if (!this.isAuditor(actor)) throw new ForbiddenException();
+    return this.prisma.$transaction(async (tx) => {
+      const report = await tx.report.findUnique({ where: { id } });
+      if (!report) throw new NotFoundException('Report not found');
+      if (report.status !== ReportStatus.OPEN) throw new ConflictException('Only an open report can enter review');
+      const snapshot = await tx.chatSnapshot.findUnique({ where: { reportId: id } });
+      if (!snapshot) throw new ConflictException('Chat context must be captured before review');
+      await tx.report.update({ where: { id }, data: { status: ReportStatus.UNDER_REVIEW } });
+      await tx.auditEvent.create({ data: { reportId: id, actorId: actor.userId, action: 'REVIEW_STARTED', metadata: {} } });
+      return { reportId: id, status: ReportStatus.UNDER_REVIEW };
     });
   }
 
@@ -103,6 +134,8 @@ export class ReportsService {
       const report = await tx.report.findUnique({ where: { id }, include: { evidence: true } });
       if (!report) throw new NotFoundException('Report not found');
       if (report.status !== ReportStatus.RESOLVED) throw new ConflictException('Only a resolved report can be archived');
+      const pendingActions = await tx.decisionAction.count({ where: { reportId: id, status: { not: 'SUCCEEDED' } } });
+      if (pendingActions > 0) throw new ConflictException('All sanction and restoration actions must succeed before archive');
       const archivedAt = new Date();
       await tx.report.update({ where: { id }, data: { status: ReportStatus.ARCHIVED, archivedAt } });
       await tx.chatSnapshot.deleteMany({ where: { reportId: id } });

@@ -44,3 +44,8 @@ export class PurgeConfirmationDto {
   @IsString() @IsNotEmpty() @MaxLength(120) sourceService!: string;
   @IsOptional() @IsString() @MaxLength(1000) confirmationReference?: string;
 }
+
+export class ActionResultDto {
+  @IsIn(['SUCCEEDED', 'FAILED']) status!: 'SUCCEEDED' | 'FAILED';
+  @IsOptional() @IsString() @MaxLength(2000) resultNote?: string;
+}

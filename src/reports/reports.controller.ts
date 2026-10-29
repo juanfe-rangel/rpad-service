@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/co
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentActor, Actor, Roles } from '../auth/auth.decorators';
 import { JwtAuthGuard, RolesGuard } from '../auth/auth.guards';
-import { CreateDecisionDto, CreateReportDto, ChatSnapshotDto, PurgeConfirmationDto, UploadIntentDto } from '../dto/report.dto';
+import { ActionResultDto, CreateDecisionDto, CreateReportDto, ChatSnapshotDto, PurgeConfirmationDto, UploadIntentDto } from '../dto/report.dto';
 import { EvidenceService } from '../evidence/evidence.service';
 import { ReportsService } from './reports.service';
 
@@ -40,9 +40,17 @@ export class ReportsController {
   @Get(':id/evidence/:evidenceId/url')
   evidenceUrl(@Param('id') id: string, @Param('evidenceId') evidenceId: string, @CurrentActor() actor: Actor) { return this.evidence.createReadUrl(id, evidenceId, actor); }
 
+  @Post(':id/start-review')
+  @Roles('AUDITOR', 'ADMIN')
+  startReview(@Param('id') id: string, @CurrentActor() actor: Actor) { return this.reports.startReview(id, actor); }
+
   @Post(':id/decisions')
   @Roles('AUDITOR', 'ADMIN')
   decide(@Param('id') id: string, @Body() dto: CreateDecisionDto, @CurrentActor() actor: Actor) { return this.reports.decide(id, dto, actor); }
+
+  @Post(':id/actions/:actionId/result')
+  @Roles('SERVICE', 'ADMIN')
+  actionResult(@Param('id') id: string, @Param('actionId') actionId: string, @Body() dto: ActionResultDto, @CurrentActor() actor: Actor) { return this.reports.recordActionResult(id, actionId, dto, actor); }
 
   @Post(':id/archive')
   @Roles('AUDITOR', 'ADMIN')
