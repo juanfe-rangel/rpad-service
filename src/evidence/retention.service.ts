@@ -15,7 +15,7 @@ export class RetentionService {
     if (this.running) return;
     this.running = true;
     try {
-      const pending = await this.prisma.reportEvidence.findMany({ where: { status: EvidenceStatus.DELETE_PENDING, report: { status: ReportStatus.ARCHIVED } }, take: 25, orderBy: { createdAt: 'asc' } });
+      const pending = await this.prisma.reportEvidence.findMany({ where: { status: EvidenceStatus.DELETE_PENDING, report: { is: { status: ReportStatus.ARCHIVED } } }, take: 25, orderBy: { createdAt: 'asc' } });
       for (const item of pending) {
         try {
           await this.storage.delete(item.storageKey);

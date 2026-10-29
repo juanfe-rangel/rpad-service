@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException, GoneException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, GoneException } from '@nestjs/common';
 import { Prisma, ReportStatus } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { Actor } from '../auth/auth.decorators';
@@ -30,21 +30,23 @@ export class ReportsService {
     });
   }
 
-  async list(actor: Actor, page = 1, pageSize = 20, status?: ReportStatus) {
+  async list(actor: Actor, page = 1, pageSize = 20, status?: string) {
+    if (status && !Object.values(ReportStatus).includes(status as ReportStatus)) throw new BadRequestException('Invalid report status');
+    const reportStatus = status as ReportStatus | undefined;
     const safePage = Math.max(1, page);
     const safeSize = Math.min(100, Math.max(1, pageSize));
     const where: Prisma.ReportWhereInput = this.isAuditor(actor)
-      ? { ...(status ? { status } : {}) }
+      ? { ...(reportStatus ? { status: reportStatus } : {}) }
       : { OR: [{ claimantId: actor.userId }, { providerId: actor.userId }], ...(status ? { status } : {}) };
     const [total, items] = await this.prisma.$transaction([
       this.prisma.report.count({ where }),
-      this.prisma.report.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (safePage - 1) * safeSize, take: safeSize, include: { decision: true, evidence: true } }),
+      this.prisma.report.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (safePage - 1) * safeSize, take: safeSize, include: { decision: true, evidence: { select: { id: true, originalFilename: true, mimeType: true, sizeBytes: true, sha256: true, status: true, createdAt: true } } } }),
     ]);
     return { page: safePage, pageSize: safeSize, total, items };
   }
 
   async findReport(id: string) {
-    const report = await this.prisma.report.findUnique({ where: { id }, include: { decision: true, evidence: true } });
+    const report = await this.prisma.report.findUnique({ where: { id }, include: { decision: true, evidence: { select: { id: true, originalFilename: true, mimeType: true, sizeBytes: true, sha256: true, status: true, createdAt: true } } } });
     if (!report) throw new NotFoundException('Report not found');
     return report;
   }
@@ -68,7 +70,6 @@ export class ReportsService {
     if (!this.isService(actor)) throw new ForbiddenException();
     const report = await this.findReport(id);
     if (report.status === ReportStatus.ARCHIVED) throw new GoneException('Archived report');
-    if (report.chatId !== report.chatId) throw new ConflictException('Chat id mismatch');
     const existing = await this.prisma.chatSnapshot.findUnique({ where: { reportId: id } });
     if (existing) throw new ConflictException('Chat snapshot is immutable once captured');
     const contentSha256 = createHash('sha256').update(JSON.stringify(dto.messages)).digest('hex');

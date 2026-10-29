@@ -21,9 +21,9 @@ export class EvidenceService {
     if (dto.sizeBytes > (image ? MAX_IMAGE_BYTES : MAX_VIDEO_BYTES)) throw new ConflictException('Evidence exceeds the per-file size limit');
     const id = randomUUID();
     const storageKey = 'reports/' + reportId + '/' + id;
+    const upload = await this.storage.createUploadUrl(storageKey, dto.mimeType);
     const row = await this.prisma.reportEvidence.create({ data: { id, reportId, uploadedBy: actor.userId, originalFilename: dto.originalFilename, mimeType: dto.mimeType, sizeBytes: dto.sizeBytes, storageKey } });
     try {
-      const upload = await this.storage.createUploadUrl(storageKey, dto.mimeType);
       await this.prisma.auditEvent.create({ data: { reportId, actorId: actor.userId, action: 'EVIDENCE_UPLOAD_INTENT_CREATED', metadata: { evidenceId: id, mimeType: dto.mimeType, sizeBytes: dto.sizeBytes } } });
       return { evidenceId: row.id, ...upload };
     } catch (error) {
@@ -38,7 +38,15 @@ export class EvidenceService {
     const row = await this.prisma.reportEvidence.findFirst({ where: { id: evidenceId, reportId } });
     if (!row) throw new NotFoundException('Evidence not found');
     if (row.status !== EvidenceStatus.PENDING_UPLOAD) throw new ConflictException('Evidence is not awaiting upload');
-    const sha256 = await this.storage.verifyAndHash(row.storageKey, row.mimeType, row.sizeBytes);
+    if (row.uploadedBy !== actor.userId && !this.reports.isService(actor)) throw new ForbiddenException();
+    let sha256: string;
+    try { sha256 = await this.storage.verifyAndHash(row.storageKey, row.mimeType, row.sizeBytes); }
+    catch (error) {
+      await this.storage.delete(row.storageKey).catch(() => undefined);
+      await this.prisma.reportEvidence.update({ where: { id: evidenceId }, data: { status: EvidenceStatus.DELETE_PENDING } });
+      await this.prisma.auditEvent.create({ data: { reportId, actorId: actor.userId, action: 'EVIDENCE_UPLOAD_REJECTED', metadata: { evidenceId, errorType: error instanceof Error ? error.name : 'unknown' } } });
+      throw error;
+    }
     const updated = await this.prisma.reportEvidence.update({ where: { id: evidenceId }, data: { status: EvidenceStatus.AVAILABLE, sha256 } });
     await this.prisma.auditEvent.create({ data: { reportId, actorId: actor.userId, action: 'EVIDENCE_UPLOAD_COMPLETED', metadata: { evidenceId, sha256, sizeBytes: row.sizeBytes, mimeType: row.mimeType } } });
     return updated;

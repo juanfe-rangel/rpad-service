@@ -18,7 +18,7 @@ export class ReportsController {
 
   @Get()
   list(@CurrentActor() actor: Actor, @Query('page') page?: string, @Query('pageSize') pageSize?: string, @Query('status') status?: string) {
-    return this.reports.list(actor, Number(page || 1), Number(pageSize || 20), status as never);
+    return this.reports.list(actor, Number(page || 1), Number(pageSize || 20), status);
   }
 
   @Get(':id')

@@ -41,7 +41,7 @@ La aplicación escucha en el puerto 3000 y expone OpenAPI en /docs. Los endpoint
 - POST /internal/rpad/reports/:id/archive — archiva el caso y agenda purga; rol AUDITOR.
 - POST /internal/rpad/reports/:id/chat-purge-confirmation — confirma la eliminación del chat de origen; rol SERVICE.
 - GET /internal/rpad/reports/:id/history — bitácora de auditoría.
-- GET /health — liveness.
+- GET /internal/rpad/health — liveness.
 
 Estados: PENDING_CONTEXT, OPEN, UNDER_REVIEW, RESOLVED y ARCHIVED. La decisión registra a qué parte se favorece, justificación y acciones SANCTION/RESTORATION. RPAD publica rpad.decision.recorded; los servicios propietarios ejecutan las acciones y confirman resultados mediante eventos en una siguiente iteración.
 
@@ -62,4 +62,4 @@ Consulta .env.example. JWT usa JWKS y RS256; el claim de roles y el claim de ID 
 - El contrato del microservicio/cache de chat está pendiente. La entrada de snapshot y el evento de purga son los contratos provisionales.
 - Las acciones de sanción y reparación quedan registradas y publicadas como eventos; RPAD no cambia cuentas externas directamente.
 - El análisis antivirus y la validación de video más profunda deben agregarse antes de producción.
-- Las pruebas automatizadas cubren la lógica base; valida el proveedor JWKS, el contenedor privado, la suscripción Service Bus y las reglas de purga en el entorno destino antes de desplegar.
+- Antes de desplegar, valida el proveedor JWKS, el contenedor privado, la suscripción Service Bus y las reglas de purga en el entorno destino. La integración real del chat y sus pruebas quedan pendientes del contrato del microservicio fuente.
