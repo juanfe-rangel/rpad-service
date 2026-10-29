@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rpad
+      POSTGRES_USER: rpad
+      POSTGRES_PASSWORD: 4{POSTGRES_PASSWORD:?Set_POSTGRES_PASSWORD_in_.env}
+    ports:
+      - "5432:5432"
+    volumes:
+      - rpad-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rpad -d rpad"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  rpad-postgres:

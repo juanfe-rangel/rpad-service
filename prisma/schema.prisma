@@ -1,0 +1,119 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ReportStatus {
+  PENDING_CONTEXT
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  ARCHIVED
+}
+
+enum EvidenceStatus {
+  PENDING_UPLOAD
+  AVAILABLE
+  DELETE_PENDING
+  DELETED
+}
+
+enum DecisionOutcome {
+  CLAIMANT_FAVORED
+  PROVIDER_FAVORED
+  NO_FAULT
+}
+
+enum OutboxStatus {
+  PENDING
+  DISPATCHED
+}
+
+model Report {
+  id                 String          @id @default(uuid()) @db.Uuid
+  claimantId         String
+  providerId         String
+  chatId             String
+  description        String          @db.Text
+  status             ReportStatus    @default(PENDING_CONTEXT)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  archivedAt         DateTime?
+  sourceChatPurgedAt DateTime?
+  chatSnapshot       ChatSnapshot?
+  decision           ReportDecision?
+  evidence           ReportEvidence[]
+  auditEvents        AuditEvent[]
+  outboxEvents       OutboxEvent[]
+
+  @@index([claimantId, createdAt])
+  @@index([providerId, createdAt])
+  @@index([chatId])
+  @@index([status, createdAt])
+}
+
+model ChatSnapshot {
+  id              String   @id @default(uuid()) @db.Uuid
+  reportId        String   @unique @db.Uuid
+  sourceChatId    String
+  messages        Json
+  contentSha256   String
+  capturedAt      DateTime @default(now())
+  report          Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+}
+
+model ReportDecision {
+  reportId      String          @id @db.Uuid
+  outcome       DecisionOutcome
+  justification String          @db.Text
+  auditorId     String
+  actions       Json
+  decidedAt     DateTime        @default(now())
+  report        Report          @relation(fields: [reportId], references: [id], onDelete: Cascade)
+}
+
+model ReportEvidence {
+  id               String         @id @default(uuid()) @db.Uuid
+  reportId         String         @db.Uuid
+  uploadedBy       String
+  originalFilename String
+  mimeType         String
+  sizeBytes        Int
+  storageKey       String         @unique
+  sha256           String?
+  status           EvidenceStatus @default(PENDING_UPLOAD)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  report           Report         @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId, status])
+}
+
+model AuditEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  reportId  String   @db.Uuid
+  actorId   String
+  action    String
+  metadata  Json
+  createdAt DateTime @default(now())
+  report    Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId, createdAt])
+}
+
+model OutboxEvent {
+  id           String      @id @default(uuid()) @db.Uuid
+  aggregateId  String      @db.Uuid
+  type         String
+  payload      Json
+  status       OutboxStatus @default(PENDING)
+  createdAt    DateTime    @default(now())
+  dispatchedAt DateTime?
+  report       Report      @relation(fields: [aggregateId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+}
